@@ -1,0 +1,122 @@
+---
+title: "tidy text"
+format: html
+editor: visual
+---
+
+```{r, warning=FALSE, message=FALSE}
+library(janeaustenr)
+library(dplyr)
+library(stringr)
+library(tidytext)
+library(tibble)
+library(tidyverse)
+library(wordcloud)
+```
+
+```{r}
+# Read the text file
+lines <- readLines("good_will_hunting_script.txt")
+
+```
+
+```{r}
+# Remove empty lines and excessive white space
+lines_clean <- lines[lines != ""]
+lines_clean <- trimws(lines_clean)
+
+```
+
+```{r}
+# Step 3: Create a tibble for line numbers and text
+script_tibble <- tibble(
+  line_number = seq_along(lines_clean),
+  text = lines_clean
+)
+
+# Step 4: Use regex to detect character names in all caps
+# We'll assume character names are all uppercase and are followed by dialogue
+script_tibble <- script_tibble %>%
+  mutate(
+    is_character = str_detect(text, "^[A-Z\\s]+$"),  # Detect lines with uppercase letters
+    character = if_else(is_character, text, NA_character_)  # If it's a character line, keep the name
+  ) %>%
+  fill(character, .direction = "down")  # Fill the character names downwards for the dialogue lines
+
+# Step 5: Filter out non-dialogue content, like stage directions (which aren't associated with a character)
+# We'll assume stage directions are written in sentence case and dialogue is in lowercase, so we can filter by that
+dialogue_df <- script_tibble %>%
+  filter(!is_character & str_detect(text, "[a-z]")) %>%  # Only keep dialogue lines (text containing lowercase)
+  select(character, text)  # Keep only character and text columns
+
+# View the dialogue data frame
+head(dialogue_df)
+```
+
+```{r}
+table(dialogue_df$character)
+```
+
+```{r}
+# Step 1: Tokenize text by word
+dialogue_words <- dialogue_df %>%
+  unnest_tokens(word, text)  # Break each line of dialogue into words
+
+# Step 2: Remove common stop words (like "the", "and", etc.)
+data("stop_words")  # Use built-in stop words in tidytext
+dialogue_words <- dialogue_words %>%
+  anti_join(stop_words)
+
+# Step 3: Group by character and count word frequencies
+word_counts <- dialogue_words %>%
+  group_by(character, word) %>%
+  summarize(count = n()) %>%
+  arrange(desc(count))
+
+# Step 4: Generate word clouds for each character
+# We'll loop through each character and create a word cloud
+characters <- unique(word_counts$character)
+
+for (char in characters) {
+  char_words <- filter(word_counts, character == char)
+  
+  # Create a word cloud
+  wordcloud(words = char_words$word, 
+            freq = char_words$count, 
+            max.words = 100, 
+            colors = brewer.pal(8, "Dark2"), 
+            scale = c(3, 0.5), 
+            random.order = FALSE)
+  
+  # Title for each word cloud
+  title(main = paste("Word Cloud for", char))
+}
+```
+
+```{r}
+# Convert the text into a tibble
+text_tibble <- tibble(line = 1:length(lines_clean), text = lines_clean)
+
+```
+
+```{r}
+
+# Tokenize the text into words
+text_words <- text_tibble %>%
+  unnest_tokens(word, text)
+
+```
+
+```{r}
+# Tokenize the text into sentences
+text_sentences <- text_tibble %>%
+  unnest_tokens(sentence, text, token = "sentences")
+
+```
+
+```{r}
+# View the tokenized words or sentences
+head(text_words)
+head(text_sentences)
+
+```
